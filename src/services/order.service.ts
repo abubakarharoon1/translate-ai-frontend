@@ -1,16 +1,32 @@
 // src/services/order.service.ts
 import { apiFetch } from '@/lib/https/fetch-client';
 import { endpoints } from '@/config/endpoints';
-import type { CreateOrderDto, Order } from '@/types/order';
+import type { CreateOrderRequest, Order } from '@/types/order';
+import { getToken } from '@/lib/auth/token';
 
 export const OrderService = {
   list() {
-    return apiFetch<Order[]>(endpoints.orders.list);
+    const token = getToken();
+    return apiFetch<Order[]>(endpoints.orders.list, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   },
-  get(id: string) {
-    return apiFetch<Order>(endpoints.orders.byId(id));
+
+  getById(id: string | number) {
+    return apiFetch<Order>(endpoints.orders.byId(String(id)));
   },
-  create(dto: CreateOrderDto) {
-    return apiFetch<Order>(endpoints.orders.create, { method: 'POST', json: dto });
+
+  async create(dto: CreateOrderRequest, file?: File) {
+    const fd = new FormData();
+    fd.set('payload', JSON.stringify(dto));
+    if (file) fd.set('file', file);
+
+    const token = getToken();
+
+    return apiFetch<Order>(endpoints.orders.create, {
+      method: 'POST',
+      body: fd,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
   },
 };

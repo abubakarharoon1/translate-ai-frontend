@@ -1,3 +1,4 @@
+const apiPrefix = '';
 export const endpoints = {
  auth: {
     login: '/auth/login',
@@ -13,10 +14,10 @@ export const endpoints = {
     create: '/translations',
     byId: (id: string) => `/translations/${id}`,
   },
-  orders: {
-    create: '/orders',
-    list: '/orders',
-    byId: (id: string) => `/orders/${id}`,
+   orders: {
+    create: `${apiPrefix}/orders`,
+    list: `${apiPrefix}/orders`,
+    byId: (id: string | number) => `${apiPrefix}/orders/${id}`,
   },
   payments: {
     checkout: '/payments/checkout',
@@ -26,11 +27,16 @@ export const endpoints = {
     list: '/blogs',
     byId: (id: number | string) => `/blogs/${id}`,
   },
-  admin: {
-    stats: '/api/admin/stats',            // GET
-    orders: '/api/admin/orders',          // GET ?page=&limit=
-    pricing: '/api/admin/pricing',        // GET
-    updatePricing: '/api/admin/pricing',  // PUT (JSON)
-    files: '/api/admin/files',            // GET (placeholder)
+  public: {
+   pricingCards: '/service-cards',  // ← public GET we built in Nest
   },
+admin: {
+  stats: '/api/admin/stats',
+  orders: '/api/admin/orders',
+  serviceCards: '/api/admin/service-cards',
+  updatePricing: '/api/admin/pricing',
+  files: '/api/admin/files',
+},
+
+
 };

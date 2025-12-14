@@ -7,7 +7,12 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function http<T>(url: string, init?: RequestInit): Promise<T> {
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4001';
+
+async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  console.log('[Admin HTTP] url =', url); 
+
   const headers: HeadersInit = {
     Accept: 'application/json',
     ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -18,18 +23,55 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers,
-    cache: 'no-store',
-    next: { revalidate: 0 },
   });
+
+  const raw = await res.text();
+
   if (!res.ok) {
-    let msg = '';
-    try { msg = (await res.json())?.message; } catch { msg = await res.text(); }
+    let msg = raw;
+    try {
+      const parsed = JSON.parse(raw);
+      msg = parsed?.message ?? msg;
+    } catch {}
     throw new Error(Array.isArray(msg) ? msg.join(', ') : msg || `HTTP ${res.status}`);
   }
-  return res.json() as Promise<T>;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return raw as unknown as T;
+  }
 }
 
+
+/* -------------------------------------------------------------------------- */
+/*                               Type Definitions                             */
+/*                               Type Definitions                             */
+/* -------------------------------------------------------------------------- */
+
+export type ServiceCardAdmin = {
+  id: number;
+  key: 'human' | 'machine' | 'proof' | 'official';
+  title: string;
+  subtitle?: string;
+  description?: string;
+  pricePerWord: string;
+  basePriceUSD: string;
+  deliveryHours: number;
+  bestSeller: boolean;
+  active: boolean;
+  sort: number;
+  features?: string[];
+  fromLanguages?: string[];
+  toLanguages?: string[];
+};
+
+/* -------------------------------------------------------------------------- */
+/*                                Admin Service                               */
+/* -------------------------------------------------------------------------- */
+
 export const AdminService = {
+  /* ----------------------------- Dashboard stats ----------------------------- */
   getStats() {
     return http<{
       totalOrders: number;
@@ -39,11 +81,14 @@ export const AdminService = {
     }>(endpoints.admin.stats);
   },
 
+  /* --------------------------------- Orders --------------------------------- */
   getOrders(params?: { page?: number; limit?: number }) {
     const q = new URLSearchParams();
     if (params?.page) q.set('page', String(params.page));
     if (params?.limit) q.set('limit', String(params.limit));
+
     const url = `${endpoints.admin.orders}${q.toString() ? `?${q.toString()}` : ''}`;
+
     return http<{
       items: Array<{
         id: number | string;
@@ -61,22 +106,41 @@ export const AdminService = {
     }>(url);
   },
 
-  getPricing() {
-    return http<Array<{ id: string; name: string; pricePerWord: number; description?: string }>>(
-      endpoints.admin.pricing
-    );
-  },
-
-  updatePricing(payload: Array<{ id: string; pricePerWord: number }>) {
-    return http<{ updated: number }>(endpoints.admin.updatePricing, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    });
-  },
-
+  /* ---------------------------------- Files --------------------------------- */
   getFiles() {
     return http<Array<{ id: string; name: string; size: number; uploadedAt: string }>>(
       endpoints.admin.files
     );
+  },
+
+  /* ----------------------------- Service Cards ------------------------------ */
+  async listServiceCards(): Promise<ServiceCardAdmin[]> {
+    // match backend controller: @Controller('admin/service-cards')
+    return http<ServiceCardAdmin[]>('/admin/service-cards');
+  },
+
+  async createServiceCard(
+    data: Omit<ServiceCardAdmin, 'id'>,
+  ): Promise<ServiceCardAdmin> {
+    return http<ServiceCardAdmin>('/admin/service-cards', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateServiceCard(
+    id: number,
+    data: Partial<ServiceCardAdmin>,
+  ): Promise<ServiceCardAdmin> {
+    return http<ServiceCardAdmin>(`/admin/service-cards/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteServiceCard(id: number): Promise<void> {
+    await http(`/admin/service-cards/${id}`, {
+      method: 'DELETE',
+    });
   },
 };

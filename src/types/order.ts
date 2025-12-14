@@ -1,45 +1,42 @@
 // src/types/order.ts
-export type ServiceType = 'human' | 'machine';
-export type VoiceTone = 'informal' | 'friendly' | 'business' | 'formal';
+export type Tone = 'informal' | 'friendly' | 'business' | 'formal';
 
-export type OrderStatus =
-  | 'draft'
-  | 'pending_payment'
-  | 'paid'
-  | 'processing'
-  | 'delivered'
-  | 'failed'
-  | 'canceled';
+export type CreateOrderRequest = {
+  service: 'human' | 'machine';
+  from: string;
+  to: string[]; // e.g. ['en']
 
-export interface OrderItem {
-  service: ServiceType;
-  from: string;          // language code
-  to: string[];          // one or more targets
-  words: number;
-  pricePerWord: number;  // USD
-  total: number;         // USD
-}
-
-export interface CreateOrderDto {
-  email: string;
   notes?: string;
-  tone?: VoiceTone;
   promo?: string;
-  // summary for server (mirrors your store)
-  item: OrderItem;
-  // OPTIONAL: if you upload first and send a key
-  fileKey?: string;
-}
+  text?: string;  // if you later support pasted text
+
+  email?: string; // guest email
+  tone?: Tone;
+
+  pricePerWord: number;
+  words: number;
+
+  meta?: Record<string, unknown>;
+};
 
 export interface Order {
-  id: string;
-  status: OrderStatus;
-  email: string;
+  id: number;
+  orderToken: string;
+  service: 'human' | 'machine';
+  from: string;
+  to: string[];
+  words: number;
+  pricePerWord: string;
+  total: string;
   notes?: string;
-  tone?: VoiceTone;
+  tone?: string;
   promo?: string;
-  item: OrderItem;
-  fileKey?: string;
-  createdAt: string; // ISO
-  updatedAt: string; // ISO
+  guestEmail?: string;
+  text?: string;
+  status: string;
+  paymentStatus: string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+  // add extra fields later if you need them
 }

@@ -1,4 +1,5 @@
 'use client';
+
 import { create, type StateCreator } from 'zustand';
 
 export type ServiceType = 'human' | 'machine';

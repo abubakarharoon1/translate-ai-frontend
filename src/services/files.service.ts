@@ -22,7 +22,7 @@ async function countDocx(file: File): Promise<CountResult> {
   const zip = await JSZip.loadAsync(buf);
   const docXml = await zip.file('word/document.xml')?.async('string');
   if (!docXml) return { words: 0, chars: 0 };
-  // strip tags & decode basic entities
+
   const text = docXml
     .replace(/<w:.*?>/g, '')
     .replace(/<.*?>/g, ' ')
@@ -33,16 +33,11 @@ async function countDocx(file: File): Promise<CountResult> {
 }
 
 export const FilesService = {
-  /**
-   * Counts words on the client first.
-   * If unsupported type OR you prefer server counting, call backend endpoint later.
-   */
   async countLocal(file: File): Promise<CountResult> {
     const ext = file.name.toLowerCase().split('.').pop() || '';
     if (ext === 'txt') return countTxt(file);
     if (ext === 'docx') return countDocx(file);
 
-    // fallback: quick read as text; if it fails, just approximate by filename
     try {
       const text = await file.text();
       return countText(text);
@@ -55,14 +50,12 @@ export const FilesService = {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('orderId', orderId);
-    // implement /files upload later; this is a placeholder
-    return http.post('/files/upload', fd);
+    return http.post('/files/upload', fd); // adjust when you implement this endpoint
   },
 
-  // When you add a backend endpoint later:
   async countOnServer(file: File): Promise<CountResult> {
     const fd = new FormData();
     fd.append('file', file);
-    return http.post(endpoints.translations.estimate, fd); // e.g. returns {words, chars}
+    return http.post(endpoints.translations.estimate, fd);
   },
 };

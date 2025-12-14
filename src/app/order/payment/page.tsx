@@ -1,64 +1,215 @@
-'use client';
-import { useOrderFlow } from '@/hooks/useOrderFlow';
-import { Stepper } from '../components/Stepper';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { PaymentService } from '@/services/payment.service';
+// src/app/order/payment/page.tsx
+"use client";
 
-export default function PaymentPage() {
+import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useState, useMemo } from "react";
+import { loadStripe, Stripe } from "@stripe/stripe-js";
+import type { StripeElementsOptions } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
+import { PaymentService } from "@/services/payment.service";
+import { Stepper } from "../components/Stepper";
+import { useIsLoggedIn } from "@/hooks/useIsLoggedIn";
+
+// ---- SAFE STRIPE INIT -------------------------------------------------------
+const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
+if (!publishableKey) {
+  console.error("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is NOT set");
+}
+
+const stripePromise: Promise<Stripe | null> | null = publishableKey
+  ? loadStripe(publishableKey)
+  : null;
+// -----------------------------------------------------------------------------
+
+
+function CheckoutForm({ clientSecret }: { clientSecret: string }) {
+  const stripe = useStripe();
+  const elements = useElements();
   const router = useRouter();
-  const { draft, setStep } = useOrderFlow();
-  const [paying, setPaying] = useState(false);
-  const canPay = draft.total > 0;
 
-  async function pay() {
-    setPaying(true);
+  const [elementReady, setElementReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onPay(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!stripe || !elements) {
+      console.warn("Stripe or Elements not ready");
+      return;
+    }
+
+    if (loadError) {
+      alert("Payment form failed to load. Please refresh the page.");
+      return;
+    }
+
+    if (!elementReady) {
+      alert("Payment form is still loading. Please wait a moment.");
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
-      // call your backend later (Stripe/PayPal/…)
-     await PaymentService.checkout({
-  amount: Math.round(draft.total * 100),
-  currency: 'usd',
-  orderDraft: draft,
-});
+      // (optional) validate fields first
+      const { error: submitError } = await elements.submit();
+      if (submitError) {
+        console.error("elements.submit error", submitError);
+        alert(submitError.message ?? "Payment details are not valid.");
+        return;
+      }
 
-      router.push('/order/finish');
-    } catch (e: any) {
-      alert(e.message || 'Payment failed');
+      const result = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          return_url: `${
+            process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+          }/order/finish`,
+        },
+        redirect: "if_required",
+      });
+
+      const { error, paymentIntent } = result;
+
+      if (error) {
+        // ❗ Real Stripe error lives here
+        console.error("confirmPayment error", error);
+        alert(
+          error.message ??
+            "Payment failed. Please use a different card or try again.",
+        );
+        return;
+      }
+
+      // Success path
+      if (
+        paymentIntent &&
+        (paymentIntent.status === "succeeded" ||
+          paymentIntent.status === "processing")
+      ) {
+        // go to finish page
+        router.push("/order/finish");
+      } else {
+        // unexpected but not a crash
+        console.warn(
+          "Unexpected payment intent status",
+          paymentIntent?.status,
+          paymentIntent,
+        );
+        router.push("/order/finish");
+      }
+    } catch (err: any) {
+      // if confirmPayment throws instead of returning { error }
+      console.error("confirmPayment threw", err);
+      alert(
+        err?.message ??
+          "Payment failed due to a technical error. Please try again.",
+      );
     } finally {
-      setPaying(false);
+      setSubmitting(false);
     }
   }
 
+
   return (
-    <main className="min-h-screen bg-slate-50">
-      <Stepper />
-      <div className="container mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-[1fr_360px] gap-8">
-        <section className="bg-white rounded-lg shadow p-6">
-          <h1 className="text-xl font-semibold mb-4">Payment</h1>
-          <p className="text-sm text-slate-600 mb-6">Enter your card details to proceed with the payment.</p>
+    <form onSubmit={onPay} className="space-y-4">
+      <PaymentElement
+        onReady={() => {
+          console.log("PaymentElement ready");
+          setElementReady(true);
+        }}
+        onLoadError={(event) => {
+          console.error("PaymentElement loaderror", event);
+          setLoadError(event?.error?.message ?? "Failed to load payment form");
+        }}
+      />
+      {loadError && (
+        <p className="text-sm text-red-600">
+          {loadError} — please check your internet connection or try again.
+        </p>
+      )}
+      <button
+        className="bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-60"
+        disabled={!stripe || !elementReady || !!loadError || submitting}
+      >
+        {submitting ? "Processing…" : "Pay now"}
+      </button>
+    </form>
+  );
+}
 
-          {/* Placeholder for Stripe Elements later */}
-          <div className="grid gap-3 max-w-lg">
-            <input className="border rounded px-3 py-2" placeholder="Name on card" />
-            <div className="border rounded px-3 py-4 text-slate-500">Card Element (Stripe) goes here</div>
-          </div>
+export default function PaymentPage() {
+  const { loggedIn } = useIsLoggedIn();            // ✅ hook INSIDE component
+  const sp = useSearchParams();
+  const token = sp.get("token") || "";
+  const [clientSecret, setClientSecret] = useState<string>("");
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-          <button onClick={pay} disabled={!canPay || paying} className="mt-6 bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-50">
-            {paying ? 'Processing…' : 'Pay'}
-          </button>
-        </section>
+  useEffect(() => {
+    if (!token) {
+      setCheckoutError("Missing order token in URL");
+      return;
+    }
+    PaymentService.checkout({ orderToken: token, method: "card" })
+      .then((res) => {
+        console.log("checkout response", res);
+        if (res.clientSecret) {
+          setClientSecret(res.clientSecret);
+        } else {
+          setCheckoutError("No client secret returned from server");
+        }
+      })
+      .catch((e: any) => {
+        console.error("checkout error", e);
+        setCheckoutError(e?.message ?? "Failed to start checkout");
+      });
+  }, [token]);
 
-        <aside className="bg-white rounded-lg shadow p-6 h-fit">
-          <h2 className="font-semibold mb-4">My order</h2>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span>Service type</span><span>{draft.service==='human'?'Human translation':'Machine translation'}</span></div>
-            <div className="flex justify-between"><span>Word count</span><span>{draft.words}</span></div>
-            <div className="flex justify-between"><span>Price per word</span><span>${draft.pricePerWord.toFixed(2)}</span></div>
-            <div className="border-t pt-2 mt-2 flex justify-between font-semibold text-lg">
-              <span>You will pay</span><span>${draft.total.toFixed(2)}</span>
-            </div>
-          </div>
-        </aside>
+  const options = useMemo<StripeElementsOptions | undefined>(
+    () =>
+      clientSecret
+        ? {
+            clientSecret,
+            appearance: { theme: "stripe" },
+          }
+        : undefined,
+    [clientSecret]
+  );
+
+  const stripeReady = !!stripePromise;
+
+  return (
+    <main className="min-h-screen bg-[#f4f7fb]">
+      <Stepper current={2} loggedIn={loggedIn} />
+      <div className="max-w-2xl mx-auto p-6">
+        <h1 className="text-xl font-semibold mb-4">Payment</h1>
+
+        {!stripeReady && (
+          <p className="text-red-600 text-sm mb-3">
+            Stripe is not configured. Please set
+            {" "}NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY{" "}in .env.local.
+          </p>
+        )}
+
+        {checkoutError && (
+          <p className="text-red-600 text-sm mb-3">{checkoutError}</p>
+        )}
+
+        {stripeReady && options && !checkoutError ? (
+          <Elements stripe={stripePromise!} options={options}>
+            <CheckoutForm clientSecret={clientSecret} />
+          </Elements>
+        ) : (
+          !checkoutError &&
+          stripeReady && <p>Preparing payment…</p>
+        )}
       </div>
     </main>
   );
