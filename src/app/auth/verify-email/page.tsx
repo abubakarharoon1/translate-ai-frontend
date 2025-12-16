@@ -15,7 +15,15 @@ export default function VerifyEmailPage() {
     if (!token) { setStatus('error'); setMsg('Missing token'); return; }
     (AuthService as any).verifyEmail(token)
       .then(() => { setStatus('ok'); setMsg('Email verified! You can log in now.'); })
-      .catch((e) => { setStatus('error'); setMsg(e?.message || 'Verification failed'); });
+      .catch((e: unknown) => {
+  setStatus("error");
+  const message =
+    typeof e === "object" && e !== null && "message" in e
+      ? String((e as any).message)
+      : "Verification failed";
+  setMsg(message);
+});
+
   }, [sp]);
 
   return (
