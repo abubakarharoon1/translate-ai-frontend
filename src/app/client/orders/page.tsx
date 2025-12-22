@@ -1,6 +1,4 @@
-// src/app/client/orders/page.tsx
 'use client';
-
 import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -16,7 +14,6 @@ export default function MyOrdersPage() {
 
   useEffect(() => {
     async function load() {
-      // if not logged in, send to login
       if (!isAuthenticated()) {
         router.replace('/auth/login');
         return;
@@ -44,7 +41,6 @@ export default function MyOrdersPage() {
   return (
     <main className="min-h-screen bg-[#f4f7fb]">
       <div className="max-w-6xl mx-auto px-4 py-10">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-semibold text-slate-900">My orders</h1>
           <p className="mt-2 text-sm text-slate-600">
@@ -52,14 +48,11 @@ export default function MyOrdersPage() {
           </p>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="flex justify-center py-16">
             <p className="text-sm text-slate-600">Loading your orders…</p>
           </div>
         )}
-
-        {/* Error */}
         {!loading && error && (
           <div className="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
